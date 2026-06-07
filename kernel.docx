@@ -1,0 +1,371 @@
+操作系统原理
+实验报告
+
+
+学院：计算机科学与技术学院
+专业：计算机科学与技术
+班级：计算机243班
+学号：1240210052
+姓名：陈俐文
+
+
+项目4  Linux内核字符设备驱动开发
+一、实验目的
+1. 理解Linux“宏内核”的组织方式，掌握模块的结构；
+2. 实现模块的编译、模块的加载与卸载；
+3. 利用宏内核+可加载模块架构，设计实现一个字符型设备驱动程序，并测试功能。
+二、实验基本原理
+1.模块的组织结构
+模块是动态加载到内核中的代码单元，实现 “宏内核” 架构下的功能扩展，通过 init_module（加载）和 cleanup_module（卸载）函数管理生命周期。模块需包含头文件 <linux/module.h> 和 <linux/kernel.h>，通过 MODULE_LICENSE 声明许可证。模块加载时通过函数注册资源（如设备驱动接口），卸载时反向注销以避免内存泄漏。通过insmod和rmmod命令完成。
+2.字符设备驱动程序模型
+File_operations：定义驱动提供给内核的接口（如read/write/open/release），是驱动与用户空间交互的核心：封装字符设备属性，通过 cdev_init 和 cdev_add 注册到内核，关联设备号（dev_t）和操作接口。
+cdev结构：表示字符设备，主设备号（标识设备类型）和次设备号（标识具体设备实例）组成 dev_t，设备模型：现代Linux内核(如6.x)通过class_create和device_create创建设备节点；
+3.内核空间与用户空间交互
+通过 copy_from_user（用户空间→内核空间）和 copy_to_user（内核空间→用户空间）函数安全传输数据，避免直接访问用户地址导致内核崩溃。用户进程通过系统调用（如open/read/write）访问设备文件，内核根据主设备号找到驱动的 file_operations 接口并调用对应函数。
+三、实践任务
+【4-1】 Linux内核基础字符型设备驱动
+【项目背景】
+Linux内核采用宏内核+可加载模块架构，支持动态扩展内核功能，字符设备是Linux中最基础的一类设备（如键盘、串口、虚拟终端都属于字符设备），是理解Linux设备驱动模型的入门实践场景。本项目通过从零实现一个最简单的可加载字符设备驱动，掌握内核模块开发规范、字符设备驱动框架、内核空间与用户空间交互的核心基础，不需要额外硬件支持，可在通用PC的Linux环境下独立完成，为后续复杂驱动开发打下基础。
+【核心要求】
+1.遵循Linux内核模块开发规范，正确实现模块的加载与卸载生命周期管理，加载时注册资源、卸载时释放资源，避免内存泄漏；
+2.掌握字符设备驱动的基础模型：正确完成设备号分配、cdev初始化注册、关联文件操作接口；
+3.实现基础的用户空间与内核空间数据交互，遵循内核安全访问规范，完成数据的双向传递；
+4.能够独立搭建内核模块开发环境，编写Makefile完成编译，编写用户空间测试程序验证驱动功能，通过内核日志调试，最终完成驱动卸载。
+5.实现的最简字符设备功能：用户空间向设备写入字符串，内核保存字符串；用户空间读取设备时，内核返回已保存的字符串。
+【分步任务】供参考
+1：搭建内核模块开发环境
+2：实现字符设备驱动基础框架
+3：实现核心设备操作接口
+4：创建设备节点
+5：编写测试程序并验证功能
+6：资源清理与驱动卸载
+【4-2】 Linux内核环形缓冲区字符设备驱动
+【项目背景】
+实现一个内核空间的环形缓冲区（生产者-消费者模型）字符驱动，用户空间可以向设备写入数据、从设备读取数据，这是Linux驱动中非常常见的数据缓存场景，比如串口、键盘等输入设备都使用类似缓存机制，项目基于字符设备驱动，增加了基础数据结构的实现，更贴近真实驱动的功能逻辑。
+【核心要求】
+1.遵循内核模块开发规范，实现模块加载卸载，正确申请释放资源；
+2.实现字符设备驱动完整框架，支持动态分配设备号；
+3.在内核空间实现一个固定大小（例如4KB）的环形缓冲区，实现基础生产者-消费者逻辑：用户空间write写入数据（生产者）放到缓冲区，read从缓冲区读取数据（消费者），缓冲区空时read阻塞等待（简单实现可返回0，进阶实现用等待队列实现阻塞唤醒），缓冲区满时write丢弃多余数据（或者阻塞等待空闲空间）；
+4.通过copy_from_user/copy_to_user完成用户内核空间的数据拷贝，遵循内核安全访问规范；
+5.编写用户空间测试程序：一个进程写数据、一个进程读数据，验证环形缓存功能；调试查看日志后完成驱动卸载。
+【分步任务】供参考
+1：搭建开发环境，编写基础模块框架，完成Makefile编译验证；
+2：实现环形缓冲区核心数据结构，定义缓存区、头指针、尾指针、当前数据计数变量；
+3：实现字符设备注册，动态申请设备号，注册cdev，关联file_operations接口
+4：实现open/release，打开设备时初始化缓存，关闭时清理状态；
+5：实现write接口，将用户空间传入的数据写入环形缓冲区，处理缓存满的情况；
+6：实现read接口，从环形缓冲区读取数据到用户空间，处理缓存空的情况；
+7：编写多进程测试程序，验证读写功能，测试完成后卸载驱动。
+四、实验要求
+1. （90分）可二选一，完成前述的实验要求。确保模块可正常加载、卸载，无内核崩溃；用户空间测试程序写入字符串后，读取结果和写入一致；内核日志无错误提示，模块卸载后无资源残留。
+2. （10分）个人独立完成，根据实验内容编写C程序，上机调试程序，记录并分析程序运行结果。发布到GitHub、gitee等开源平台，给出截图和网址链接。研究方案和数据分析部分可借助AI工具，但需在报告中说明使用方式。
+
+五、程序说明和程序流程图
+开始
+ ↓
+编写内核模块 myringbuf.c
+ ↓
+编写 Makefile 并执行 make
+ ↓
+生成 myringbuf.ko
+ ↓
+insmod 加载内核模块
+ ↓
+alloc_chrdev_region 动态申请设备号
+ ↓
+cdev_init 初始化字符设备并绑定 file_operations
+ ↓
+cdev_add 注册字符设备
+ ↓
+class_create 创建设备类
+ ↓
+device_create 创建 /dev/myringbuf 设备节点
+ ↓
+编写并运行 writer.c 和 reader.c
+ ↓
+writer 进程调用 write()
+ ↓
+驱动 my_write() 使用 copy_from_user()
+ ↓
+数据写入内核环形缓冲区
+ ↓
+reader 进程调用 read()
+ ↓
+驱动 my_read() 从环形缓冲区取出数据
+ ↓
+copy_to_user() 返回给用户空间
+ ↓
+查看运行结果和 dmesg 日志
+ ↓
+rmmod 卸载模块
+ ↓
+结束
+六、程序代码与执行结果
+1、编写可载入内置模块：
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/fs.h>
+#include <linux/cdev.h>
+#include <linux/device.h>
+#include <linux/uaccess.h>
+#include <linux/slab.h>
+#include <linux/mutex.h>
+#define DEVICE_NAME "myringbuf"
+#define CLASS_NAME  "myringbuf_class"
+#define BUF_SIZE    4096
+static dev_t devno;
+static struct cdev my_cdev;
+static struct class *my_class;
+static struct device *my_device;
+/* 环形缓冲区核心数据 */
+static char ring_buffer[BUF_SIZE];
+static int read_pos = 0;
+static int write_pos = 0;
+static int data_count = 0;
+/* 防止多个进程同时读写造成数据混乱 */
+static DEFINE_MUTEX(ring_lock);
+
+static int my_open(struct inode *inode, struct file *file)
+{
+    printk(KERN_INFO "myringbuf: device opened\n");
+    return 0;
+}
+static int my_release(struct inode *inode, struct file *file)
+{
+    printk(KERN_INFO "myringbuf: device closed\n");
+    return 0;
+}
+static ssize_t my_write(struct file *file,
+                        const char __user *buf,
+                        size_t count,
+                        loff_t *ppos)
+{
+    char *kbuf;
+    size_t available;
+    size_t to_write;//准备写多少个字节
+    size_t i;
+    if (count == 0)
+        return 0;
+    /*
+     * 最多一次处理 BUF_SIZE 个字节。
+     * 如果用户传入特别大的 count，不一次性申请太大内存。
+     */
+    if (count > BUF_SIZE)
+        count = BUF_SIZE;
+    kbuf = kmalloc(count, GFP_KERNEL);
+    if (!kbuf)
+        return -ENOMEM;
+    mutex_lock(&ring_lock);
+    available = BUF_SIZE - data_count;
+    to_write = min(count, available);
+    if (to_write == 0) {
+        mutex_unlock(&ring_lock);
+        kfree(kbuf);
+        printk(KERN_INFO "myringbuf: buffer full, write ignored\n");
+        return 0;
+    }
+    if (copy_from_user(kbuf, buf, to_write)) {
+        mutex_unlock(&ring_lock);
+        kfree(kbuf);
+        return -EFAULT;
+    }
+    for (i = 0; i < to_write; i++) {
+        ring_buffer[write_pos] = kbuf[i];
+        write_pos = (write_pos + 1) % BUF_SIZE;
+        data_count++;
+    }
+    mutex_unlock(&ring_lock);
+    kfree(kbuf);
+    printk(KERN_INFO "myringbuf: write %zu bytes, data_count=%d\n",
+           to_write, data_count);
+    return to_write;
+}
+static ssize_t my_read(struct file *file,
+                       char __user *buf,
+                       size_t count,
+                       loff_t *ppos)
+{
+    char *kbuf;
+    size_t to_read;//准备读多少个字节
+    size_t i;
+
+    if (count == 0)
+        return 0;
+    if (count > BUF_SIZE)
+       count = BUF_SIZE;
+    kbuf = kmalloc(count, GFP_KERNEL);
+    if (!kbuf)
+        return -ENOMEM;
+    mutex_lock(&ring_lock);
+    to_read = min(count, (size_t)data_count);
+    if (to_read == 0) {
+        mutex_unlock(&ring_lock);
+        kfree(kbuf);
+        printk(KERN_INFO "myringbuf: buffer empty, read returns 0\n");
+        return 0;
+    }
+    for (i = 0; i < to_read; i++) {
+        kbuf[i] = ring_buffer[read_pos];
+        read_pos = (read_pos + 1) % BUF_SIZE;
+        data_count--;
+    }
+    if (copy_to_user(buf, kbuf, to_read)) {
+        mutex_unlock(&ring_lock);
+        kfree(kbuf);
+        return -EFAULT;
+    }
+    mutex_unlock(&ring_lock);
+    kfree(kbuf);
+    printk(KERN_INFO "myringbuf: read %zu bytes, data_count=%d\n",
+           to_read, data_count);
+    return to_read;
+}
+static struct file_operations fops = {
+    .owner   = THIS_MODULE,
+    .open    = my_open,
+    .read    = my_read,
+    .write   = my_write,
+    .release = my_release,
+};
+static int __init myringbuf_init(void)
+{
+    int ret;
+    ret = alloc_chrdev_region(&devno, 0, 1, DEVICE_NAME);
+    if (ret < 0) {
+        printk(KERN_ERR "myringbuf: failed to allocate device number\n");
+        return ret;
+    }
+    cdev_init(&my_cdev, &fops);
+    my_cdev.owner = THIS_MODULE;
+    ret = cdev_add(&my_cdev, devno, 1);
+    if (ret < 0) {
+        unregister_chrdev_region(devno, 1);
+        printk(KERN_ERR "myringbuf: failed to add cdev\n");
+        return ret;
+    }
+    my_class = class_create(CLASS_NAME);
+    if (IS_ERR(my_class)) {
+        cdev_del(&my_cdev);
+        unregister_chrdev_region(devno, 1);
+        printk(KERN_ERR "myringbuf: failed to create class\n");
+        return PTR_ERR(my_class);
+    }
+    my_device = device_create(my_class, NULL, devno, NULL, DEVICE_NAME);
+    if (IS_ERR(my_device)) {
+        class_destroy(my_class);
+        cdev_del(&my_cdev);
+        unregister_chrdev_region(devno, 1);
+        printk(KERN_ERR "myringbuf: failed to create device\n");
+        return PTR_ERR(my_device);
+    }
+    read_pos = 0;
+    write_pos = 0;
+    data_count = 0;
+    printk(KERN_INFO "myringbuf: module loaded\n");
+    printk(KERN_INFO "myringbuf: major=%d minor=%d\n",
+           MAJOR(devno), MINOR(devno));
+    printk(KERN_INFO "myringbuf: device created at /dev/%s\n", DEVICE_NAME);
+    return 0;
+}
+static void __exit myringbuf_exit(void)
+{
+    device_destroy(my_class, devno);
+    class_destroy(my_class);
+    cdev_del(&my_cdev);
+    unregister_chrdev_region(devno, 1);
+    printk(KERN_INFO "myringbuf: module unloaded\n");
+}
+module_init(myringbuf_init);
+module_exit(myringbuf_exit);
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("student");
+MODULE_DESCRIPTION("A simple Linux character device driver with ring buffer");
+2、把myringbuf.c编译成myringbuf.ko
+cat > Makefile <<'EOF'
+.RECIPEPREFIX := >
+obj-m += myringbuf.o
+KDIR := /lib/modules/$(shell uname -r)/build
+PWD := $(shell pwd)
+all:
+>$(MAKE) -C $(KDIR) M=$(PWD) modules
+clean:
+>$(MAKE) -C $(KDIR) M=$(PWD) clean
+EOF
+3、加载内核模块：
+sudo insmod myringbuf.ko
+
+
+4、写writer代码：
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
+#define DEVICE_PATH "/dev/myringbuf"
+int main(){
+    int fd;
+    char msg[128];
+    int i;
+    ssize_t ret;//有符号整数ret（返回值），保存write的返回值，>0:实际读到的字节数，=0：没读到，<0:出错
+    fd=open(DEVICE_PATH,O_WRONLY);
+    for (i=1;i<=10;i++){
+        snprintf(msg,sizeof(msg),"message %d from writer\n",i);
+        ret=write(fd,msg,strlen(msg));
+        printf("writer:write %zd bytes:%s",ret,msg);
+        sleep(1);
+    }
+close(fd);
+return 0;
+}
+5、reader代码：
+#include <stdio.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <string.h>
+#define DEVICE_PATH "/dev/myringbuf"
+int main(){
+    int fd;
+    char buf[256];
+    ssize_t ret;
+    int i;
+    fd=open(DEVICE_PATH,O_RDONLY);
+    for (i=1;i<=15;i++){
+        memset(buf,0,sizeof(buf));//把buf这个数组里的所有字节都设置成0，每次读取前清空旧数据
+        ret=read(fd,buf,sizeof(buf)-1);//最多只读255个，剩下一个存’\0’
+        if(ret==0){
+           printf("reader:buffer empty,no data\n");
+        }
+        else{
+           buf[ret]='\0';//手动添加字符串结束符
+           printf("reader:read %zd bytes:%s",ret,buf);
+        }
+        sleep(1);
+    }
+    close(fd);
+    return 0;
+}
+6、运行结果：
+
+
+
+7、卸载模块：
+sudo rmmod myringbuf
+
+
+七、研究方案、数据分析和结论
+通过用户空间写进程和读进程对内核环形缓冲区字符设备驱动进行了功能验证。首先使用 `make` 命令成功将 `myringbuf.c` 编译为内核模块 `myringbuf.ko`，说明当前系统已具备内核模块编译环境，驱动程序语法和模块结构正确。随后通过 `sudo insmod myringbuf.ko` 加载模块，并使用 `lsmod | grep myringbuf` 验证模块已经成功加载到内核中。通过 `ls -l /dev/myringbuf` 可以观察到系统中生成了字符设备节点，说明设备号申请、字符设备注册和设备节点创建过程均执行成功。
+
+在功能测试阶段，写进程 `writer` 每隔 1 秒向 `/dev/myringbuf` 写入一条字符串消息，例如 `message 1 from writer`、`message 2 from writer` 等。写进程调用 `write` 后，驱动程序中的 `my_write` 函数被触发，并通过 `copy_from_user` 将用户空间数据复制到内核空间，再按照环形缓冲区规则写入 `ring_buffer`。
+
+
+读进程 `reader` 从 `/dev/myringbuf` 中读取数据。当环形缓冲区中已有数据时，驱动程序中的 `my_read` 函数从 `ring_buffer` 中按照先进先出的顺序取出数据，并通过 `copy_to_user` 返回给用户空间。读进程输出的字符串内容与写进程写入的内容一致，说明环形缓冲区能够正确保存并返回数据。若读进程先于写进程执行，由于缓冲区中暂时没有数据，程序会输出 `buffer empty, no data`。
+
+从内核日志 `dmesg` 的输出可以观察到设备打开、写入、读取和关闭等过程。例如日志中会显示模块加载成功、设备节点创建成功、写入字节数、读取字节数以及模块卸载信息。这说明驱动程序的 `open`、`write`、`read` 和 `release` 接口均被正常调用。测试结束后，执行 `sudo rmmod myringbuf` 可以成功卸载模块。
+用户空间写进程能够通过 write 系统调用向设备写入数据，驱动程序能够使用 copy_from_user 将数据安全复制到内核空间并写入环形缓冲区；用户空间读进程能够通过 read 系统调用读取数据，驱动程序能够从环形缓冲区中取出数据并使用 copy_to_user 返回给用户空间。
+八、科技伦理思考
+首先，在用户空间与内核空间进行数据交换时，不能直接访问用户空间地址，而应使用 `copy_from_user` 和 `copy_to_user` 等安全接口。本实验在 `write` 和 `read` 操作中采用这两个函数完成数据复制，避免了内核直接访问用户地址可能导致的非法访问问题。这体现了内核编程中安全边界的重要性。
+
+其次，驱动程序应遵循最小权限和资源可控原则。模块加载时申请设备号、注册字符设备、创建设备节点，模块卸载时必须按照相反顺序释放设备节点、设备类、字符设备对象和设备号，避免资源泄漏。本实验在退出函数中完成了资源释放，保证模块卸载后系统不会留下无效设备节点或残留内核资源。
+
+最后，使用 AI 工具辅助实验时，应保持独立理解和验证。AI 可以辅助解释概念、梳理实验流程和检查代码思路，但实验代码需要由本人理解、调试和验证，不能直接依赖未审查的代码运行在内核中。由于内核模块可能影响系统稳定性，所有代码在加载前都应检查边界条件、返回值、资源释放和错误处理。
